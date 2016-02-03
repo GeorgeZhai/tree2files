@@ -1,3 +1,4 @@
+#!/usr/bin/python
 from weasyprint import HTML
 from weasyprint import CSS
 from pprint import pprint
@@ -15,63 +16,86 @@ import time
 from time import gmtime, strftime
 
 
-# threading.stack_size(64*1024)
-
-
 
 taskqueue = Queue.Queue()
 qcount = Queue.Queue()
 threads = []
+threadevent = []
 
-# def worker():
-#     while True:
-#         item = q.get()
-#         do_work(item)
-#         q.task_done()
+# Ture on testmode will reduce 1 thread every 100 sec to test out the best thread number
+testmode = False
 
+# Limitation to total file numbers
+queuelimit = 5000000
 
+# maximum create file thread
+maxthread = 2
 
-
-maxthread = 15
+#Template folder
 tmpdir = 'tmp'
+
+#temporary root location
 rootdir = 'tmproot'
-#max 15 level directories
-dirarray = ['','','','','','','','','','','','','','','','']
+
+#max 30 level directories
+dirarray = ['','','','','','','','','','','','','','','','','','','','','','','','','','','','','','','','','']
 
 
 
 
 # called by each thread, create file in tmproot
-def createfile():
+def createfile(dd, eventindex):
 	# while taskqueue.qsize() > 0:
-	while True:
+	# while True:
+	if threadevent[eventindex]:
+		print 'Thread started --------, I am createfile thread:  ' + str(eventindex)
+	currentfullpath = ''
+	while threadevent[eventindex]:
 		sp = taskqueue.get()
 		fullpath = sp[0]
 		filename = sp[1]
+		if currentfullpath != fullpath:
+			currentfullpath = fullpath
+			oscommstr1 = 'mkdir -p '+ '\''+ fullpath + '\''
+			os.system(oscommstr1)
 
 		fullpathfname = fullpath + '/' + filename
 		root,ext = os.path.splitext(fullpathfname)
+
 		if ext in ['.pdf', '.PDF']:
-			CSS(string='@page { size: A3; margin: 1cm }')
-			html_str = '''
-			    <h1>Auto Generated Dummy pdfs</h1>
-			    <p>this is not a standard<p>
-			    <p>file name: <p>
-			    <p>
-			''' + filename + ''' <p>
-			'''
-			HTML(string=html_str).write_pdf( tmpdir + '/' + filename)
+			tfn = tmpdir + '/tf' + str(eventindex)
+			text_file = open(tfn, "w")
+			text_file.write("Auto Generated Dummy pdfs, filename: %s   ." %filename)
+			text_file.close()
+			os.system('./lib/pyText2pdf.py \'' + tfn + '\' -o \'' + fullpathfname + '\' >/dev/null')
+			os.remove(tfn)
+
+			# CSS(string='@page { size: A3; margin: 1cm }')
+			# html_str = '''
+			#     <h1>Auto Generated Dummy pdfs</h1>
+			#     <p>this is not a standard<p>
+			#     <p>file name: <p>
+			#     <p>
+			# ''' + filename + ''' <p>
+			# '''
+			# HTML(string=html_str).write_pdf( tmpdir + '/' + filename)
+
 		else:
-			os.system('cp \'' + tmpdir + '/' + 'defaulttempfile\'' + ' \'' + tmpdir + '/' + filename + '\'')
+			# os.system('cp \'' + tmpdir + '/' + 'defaulttempfile\'' + ' \'' + tmpdir + '/' + filename + '\'')
+			os.system('cp \'' + tmpdir + '/' + 'defaulttempfile\'' + ' \'' + fullpathfname + '\'')
 
-		oscommstr1 = 'mkdir -p '+ '\''+ fullpath + '\''
-		oscommstr2 = 'cp \''+ tmpdir + '/' + filename + '\' \'' + fullpathfname + '\''
 
-		os.system(oscommstr1)
-		os.system(oscommstr2)
-		os.remove(tmpdir + '/' + filename)
+		# oscommstr1 = 'mkdir -p '+ '\''+ fullpath + '\''
+		# os.system(oscommstr1)
+
+		# oscommstr2 = 'cp \''+ tmpdir + '/' + filename + '\' \'' + fullpathfname + '\''
+		# os.system(oscommstr2)
+		# os.remove(tmpdir + '/' + filename)
+
 		taskqueue.task_done()
 		#print (filename)
+	if threadevent[eventindex] == False:
+		print 'Thread stopping--------, I was thread:  ' + str(eventindex)
 
 
 
@@ -82,18 +106,42 @@ def displaycount():
 	firstrun = True
 	dc1 = 0
 	dc2 = 0
+	t=0
 	forcasthrs = 0
-	ratemin = 0
+	keepalive = True
 #	while firstrun or c > 0:
-	while True:
+	while keepalive:
 		c = taskqueue.qsize()
+		ratemin = 1
 		if c < dc1 and dc1 < dc2:
 			ratemin = (dc1 - c) * 6
 			forcasthrs = (c/ratemin)/60
 		dc2 = dc1
 		dc1 = c
-		print strftime("%Y-%m-%d %H:%M:%S", gmtime()) + '  Threads: ' + str(len(threads)) + '  current queue length: '+ str(c) + '  Processing Rate per min: '+ str(ratemin) + '  forcast done in hrs: '+ str(forcasthrs)
+		activeth = threadevent.count(True)
+
+		print strftime("%Y-%m-%d %H:%M:%S", gmtime()) + '  Threads: ' + str(activeth) + '  current queue : '+ str(c) + '  Processed per min: '+ str(ratemin) + '  done in hrs: '+ str(forcasthrs)
 		time.sleep(10)
+		t=t+1
+		st = int(t/10) - 1
+
+		if activeth < 1 and dc2 > 0:
+			keepalive = False
+
+		if st >= 0 and st < maxthread and testmode:
+			if threadevent[st]:
+				threadevent[st]= False
+				activeth = threadevent.count(True)
+				print '===========================>>>stopping thread num:   ' + str(st) + '   current active threads: ' + str(activeth)
+			if activeth < 1:
+				keepalive = False
+	if keepalive == False:
+		print '++   >>>stopping dispay thread <<<   ++'
+
+
+
+
+
 
 
 dt = threading.Thread(target=displaycount)
@@ -104,6 +152,7 @@ dt.start()
 
 
 
+queuesize = taskqueue.qsize()
 
 with open('tree.txt') as f:
 	for line in f:
@@ -129,14 +178,16 @@ with open('tree.txt') as f:
 				sd = dirarray[i]
 				if len(sd) > 0:
 					fullpath = fullpath+'/'+sd
-
-		if len(filename) > 0:
+		if len(filename) > 0 and queuesize < queuelimit:
 			taskqueue.put([fullpath, filename])
+			queuesize = queuesize + 1
+
+print 'File queue has been built total files: ' + str(queuesize) + '   now start create file worker threads:  '
 
 
-
-for i in range(0,maxthread):
-	t = threading.Thread(target=createfile)
+for i in range(0,maxthread+0):
+	threadevent.append(True)
+	t = threading.Thread(target=createfile, args=(1,i))
 	threads.append(t)
 	t.daemon = True
 	t.start()
@@ -144,10 +195,17 @@ for i in range(0,maxthread):
 
 
 
+for t in threads:
+	t.join()
 
-taskqueue.join()   
+print('-----------All Threads finished --------------------')
 
-print('-----------All done!---------------')
+# with taskqueue.mutex:
+# 	taskqueue.queue.clear()
+
+# taskqueue.join()   
+
+# print('-----------All queue done!---------------')
 
 
 
