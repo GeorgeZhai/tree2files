@@ -8,15 +8,102 @@ import json
 import os
 import re
 import sys
+import Queue
+import threading
+import urllib2
+import time
+from time import gmtime, strftime
+
+
+# threading.stack_size(64*1024)
 
 
 
+taskqueue = Queue.Queue()
+qcount = Queue.Queue()
+threads = []
+
+# def worker():
+#     while True:
+#         item = q.get()
+#         do_work(item)
+#         q.task_done()
+
+
+
+
+maxthread = 15
 tmpdir = 'tmp'
 rootdir = 'tmproot'
-dirarray = ['','','','','','','','','','','','','','']
+#max 15 level directories
+dirarray = ['','','','','','','','','','','','','','','','']
 
 
-filecount = 0
+
+
+# called by each thread, create file in tmproot
+def createfile():
+	# while taskqueue.qsize() > 0:
+	while True:
+		sp = taskqueue.get()
+		fullpath = sp[0]
+		filename = sp[1]
+
+		fullpathfname = fullpath + '/' + filename
+		root,ext = os.path.splitext(fullpathfname)
+		if ext in ['.pdf', '.PDF']:
+			CSS(string='@page { size: A3; margin: 1cm }')
+			html_str = '''
+			    <h1>Auto Generated Dummy pdfs</h1>
+			    <p>this is not a standard<p>
+			    <p>file name: <p>
+			    <p>
+			''' + filename + ''' <p>
+			'''
+			HTML(string=html_str).write_pdf( tmpdir + '/' + filename)
+		else:
+			os.system('cp \'' + tmpdir + '/' + 'defaulttempfile\'' + ' \'' + tmpdir + '/' + filename + '\'')
+
+		oscommstr1 = 'mkdir -p '+ '\''+ fullpath + '\''
+		oscommstr2 = 'cp \''+ tmpdir + '/' + filename + '\' \'' + fullpathfname + '\''
+
+		os.system(oscommstr1)
+		os.system(oscommstr2)
+		os.remove(tmpdir + '/' + filename)
+		taskqueue.task_done()
+		#print (filename)
+
+
+
+
+
+
+def displaycount():
+	firstrun = True
+	dc1 = 0
+	dc2 = 0
+	forcasthrs = 0
+	ratemin = 0
+#	while firstrun or c > 0:
+	while True:
+		c = taskqueue.qsize()
+		if c < dc1 and dc1 < dc2:
+			ratemin = (dc1 - c) * 6
+			forcasthrs = (c/ratemin)/60
+		dc2 = dc1
+		dc1 = c
+		print strftime("%Y-%m-%d %H:%M:%S", gmtime()) + '  Threads: ' + str(len(threads)) + '  current queue length: '+ str(c) + '  Processing Rate per min: '+ str(ratemin) + '  forcast done in hrs: '+ str(forcasthrs)
+		time.sleep(10)
+
+
+dt = threading.Thread(target=displaycount)
+threads.append(dt)
+dt.daemon = True
+dt.start()
+
+
+
+
 
 with open('tree.txt') as f:
 	for line in f:
@@ -44,37 +131,26 @@ with open('tree.txt') as f:
 					fullpath = fullpath+'/'+sd
 
 		if len(filename) > 0:
-			fullpathfname = fullpath + '/' + filename
-			root,ext = os.path.splitext(fullpathfname)
-			if ext in ['.pdf', '.PDF']:
-   				CSS(string='@page { size: A3; margin: 1cm }')
-				html_str = '''
-				    <h1>Auto Generated Dummy pdfs</h1>
-				    <p>this is not a standard<p>
-				    <p>file name: <p>
-				    <p>
-				''' + filename + ''' <p>
-				'''
-				HTML(string=html_str).write_pdf( tmpdir + '/' + filename)
-			else:
-				os.system('cp \'' + tmpdir + '/' + 'defaulttempfile\'' + ' \'' + tmpdir + '/' + filename + '\'')
+			taskqueue.put([fullpath, filename])
 
 
 
-			oscommstr1 = 'mkdir -p '+ '\''+ fullpath + '\''
-			oscommstr2 = 'cp \''+ tmpdir + '/' + filename + '\' \'' + fullpathfname + '\''
+for i in range(0,maxthread):
+	t = threading.Thread(target=createfile)
+	threads.append(t)
+	t.daemon = True
+	t.start()
 
 
-			sys.stdout.write('\r')
 
 
-			os.system(oscommstr1)
-			os.system(oscommstr2)
-			os.remove(tmpdir + '/' + filename)
 
-			filecount = filecount + 1
-			sys.stdout.write(str(filecount))
-			sys.stdout.flush()
+taskqueue.join()   
+
+print('-----------All done!---------------')
+
+
+
 
 
 
