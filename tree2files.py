@@ -15,7 +15,11 @@ import urllib2
 import time
 from time import gmtime, strftime
 
-
+# Use tree /a /f P: > tree.txt in windows to export folder and file tree into tree.txt
+# copy tree.txt into this python script fold, and stay this folder
+# ./reset.sh to reset status
+# python tree2files.py
+# it takes about 10 hours to regenerate 1,000,000 files into tmproot folder
 
 taskqueue = Queue.Queue()
 qcount = Queue.Queue()
@@ -93,7 +97,6 @@ def createfile(dd, eventindex):
 		# os.remove(tmpdir + '/' + filename)
 
 		taskqueue.task_done()
-		#print (filename)
 	if threadevent[eventindex] == False:
 		print 'Thread stopping--------, I was thread:  ' + str(eventindex)
 
@@ -119,16 +122,22 @@ def displaycount():
 		dc2 = dc1
 		dc1 = c
 		activeth = threadevent.count(True)
+		if activeth < 1 and len(threadevent)> 0:
+			print len(threadevent)
+			keepalive = False
+		if c == 0:
+			for i in xrange(len(threadevent)):
+				threadevent[i]=False
 
 		print strftime("%Y-%m-%d %H:%M:%S", gmtime()) + '  Threads: ' + str(activeth) + '  current queue : '+ str(c) + '  Processed per min: '+ str(ratemin) + '  done in hrs: '+ str(forcasthrs)
 		time.sleep(10)
+
+
+
+
 		t=t+1
 		st = int(t/10) - 1
-
-		if activeth < 1 and dc2 > 0:
-			keepalive = False
-
-		if st >= 0 and st < maxthread and testmode:
+		if testmode and st >= 0 and st < maxthread:
 			if threadevent[st]:
 				threadevent[st]= False
 				activeth = threadevent.count(True)
